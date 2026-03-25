@@ -1,0 +1,25 @@
+{
+  "name": "claude-statusline-usage",
+  "version": "1.2.0",
+  "description": "Claude Code statusline with pace-aware rate limit gauges",
+  "bin": {
+    "claude-statusline-usage": "./bin/index.js"
+  },
+  "keywords": [
+    "claude-code",
+    "statusline",
+    "rate-limit",
+    "gauge",
+    "token-usage",
+    "cli"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}
