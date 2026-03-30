@@ -3,7 +3,7 @@
   "version": "1.3.0",
   "description": "Claude Code statusline with pace-aware rate limit gauges",
   "bin": {
-    "claude-statusline-usage": "./bin/index.js"
+    "claude-statusline-usage": "bin/index.js"
   },
   "keywords": [
     "claude-code",
@@ -20,6 +20,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gockbob/claude-statusline-usage.git"
+    "url": "git+https://github.com/gockbob/claude-statusline-usage.git"
   }
 }
