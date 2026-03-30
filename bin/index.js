@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+const path = require("path");
+const fs = require("fs");
+
 const GAUGE_WIDTH = 15;
 const RESET = "\033[0m";
 const GREEN = "\033[32m";
@@ -17,6 +20,40 @@ const LABELS = {
   seven_day: "\u{1F5D3} ",  // 🗓 + space for alignment
 };
 
+function getModelFromTranscript(transcriptPath) {
+  if (!transcriptPath) return null;
+  try {
+    const stat = fs.statSync(transcriptPath);
+    const size = stat.size;
+    const readSize = Math.min(8192, size);
+    const buf = Buffer.alloc(readSize);
+    const fd = fs.openSync(transcriptPath, "r");
+    fs.readSync(fd, buf, 0, readSize, size - readSize);
+    fs.closeSync(fd);
+    const lines = buf.toString("utf8").split("\n").reverse();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === "assistant" && entry.message && entry.message.model) {
+          return entry.message.model;
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+}
+
+function modelIdToDisplayName(modelId) {
+  if (!modelId) return null;
+  const m = modelId.match(/claude-(\w+)-([\d]+)\.([\d]+)/);
+  if (m) {
+    const name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+    return `${name} ${m[2]}.${m[3]}`;
+  }
+  return modelId;
+}
+
 function getPaceColor(delta) {
   if (delta <= -15) return RED;
   if (delta <= -5) return YELLOW;
@@ -31,6 +68,15 @@ function calcExpectedUsage(resetsAt, periodKey) {
   const elapsedSec = total - remainingSec;
   const elapsedRatio = Math.max(0, Math.min(1, elapsedSec / total));
   return elapsedRatio * 100;
+}
+
+function formatResetTime(unixTs) {
+  const d = new Date(unixTs * 1000);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${mm}/${dd} ${hh}:${min}`;
 }
 
 function makeGauge(label, used, resetsAt, periodKey) {
@@ -79,31 +125,34 @@ function main(input) {
   try {
     data = JSON.parse(input);
   } catch {
-    process.stdout.write("한도데이터 없음\n");
+    process.stdout.write("No limit data\n");
     return;
   }
 
   const rateLimits = data.rate_limits;
   if (!rateLimits) {
-    process.stdout.write("한도데이터 없음\n");
+    process.stdout.write("No limit data\n");
     return;
   }
 
   const { five_hour, seven_day } = rateLimits;
   if (!five_hour && !seven_day) {
-    process.stdout.write("한도데이터 없음\n");
+    process.stdout.write("No limit data\n");
     return;
   }
 
   // Project name
   const cwd = data.cwd || "";
-  const projectName = cwd ? cwd.split("/").pop() : "?";
+  const projectName = cwd ? path.basename(cwd) : "?";
 
-  // Model name
-  const modelInfo = data.model || {};
-  const modelName = typeof modelInfo === "object"
-    ? (modelInfo.display_name || "?")
-    : String(modelInfo);
+  // Model name — read from transcript to get per-session model
+  const transcriptModel = getModelFromTranscript(data.transcript_path);
+  const modelName = transcriptModel
+    ? (modelIdToDisplayName(transcriptModel) || transcriptModel)
+    : (() => {
+        const modelInfo = data.model || {};
+        return typeof modelInfo === "object" ? (modelInfo.display_name || "?") : String(modelInfo);
+      })();
 
   // Context window usage
   const ctxWindow = data.context_window || {};
@@ -117,14 +166,23 @@ function main(input) {
   const left = `\u{1F4C2} ${projectName}  \u{1F916} ${modelName}${ctxStr}`;
 
   const gaugeParts = [];
+  let resetStr = "";
   for (const [key, limitData] of [["five_hour", five_hour], ["seven_day", seven_day]]) {
     if (!limitData) continue;
     const used = typeof limitData === "object" ? (limitData.used_percentage || 0) : limitData;
     const resetsAt = typeof limitData === "object" ? (limitData.resets_at || 0) : 0;
     gaugeParts.push(makeGauge(LABELS[key], used, resetsAt, key));
+    if (used >= 100 && resetsAt) {
+      const label = key === "seven_day" ? "🗓" : "🕐";
+      const candidate = `  ${RED}↻ ${label} ${formatResetTime(resetsAt)}${RESET}`;
+      // seven_day takes priority over five_hour
+      if (key === "seven_day" || !resetStr) {
+        resetStr = candidate;
+      }
+    }
   }
 
-  const right = gaugeParts.length ? gaugeParts.join("   ") : "한도데이터 없음";
+  const right = (gaugeParts.length ? gaugeParts.join("   ") : "No limit data") + resetStr;
   process.stdout.write(`${left}   ${right}\n`);
 }
 
