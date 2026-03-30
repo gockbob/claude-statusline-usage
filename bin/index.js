@@ -46,7 +46,7 @@ function getModelFromTranscript(transcriptPath) {
 
 function modelIdToDisplayName(modelId) {
   if (!modelId) return null;
-  const m = modelId.match(/claude-(\w+)-([\d]+)\.([\d]+)/);
+  const m = modelId.match(/claude-(\w+)-(\d+)-(\d+)/);
   if (m) {
     const name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
     return `${name} ${m[2]}.${m[3]}`;
